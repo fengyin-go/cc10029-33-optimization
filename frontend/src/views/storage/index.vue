@@ -56,6 +56,37 @@
       </tbody>
     </table>
 
+    <!-- 去重结果回写到本业务面的去重落地清单：版本与去重策略数据报告一致 -->
+    <section class="version-panel" data-testid="dedup-landing-panel">
+      <header class="panel-head">
+        <h3>去重落地清单（回写自去重策略数据报告）</h3>
+        <button class="btn" type="button" data-testid="refresh-landing" @click="loadDedupLanding">刷新清单</button>
+      </header>
+      <p class="panel-hint">仅展示标记为当前去重版本的落地记录；未进入重算范围的记录保留原口径，不标记新口径。</p>
+      <table class="data-table" data-testid="dedup-landing-table">
+        <thead>
+          <tr><th>落地清单编号</th><th>报告编号</th><th>策略版本</th><th>记录编号</th><th>业务键</th><th>采集批次</th><th>判定结果</th><th>口径标记</th><th>归档只读</th><th>重复对象</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in dedupLanding" :key="String(item.id)" :data-testid="`landing-row-${item.记录编号}`">
+            <td>{{ item.落地清单编号 }}</td>
+            <td>{{ item.报告编号 }}</td>
+            <td>{{ item.策略版本 }}</td>
+            <td>{{ item.记录编号 }}</td>
+            <td>{{ item.业务键 }}</td>
+            <td>{{ item.采集批次 }}</td>
+            <td>{{ item.判定结果 }}</td>
+            <td>{{ item.口径标记 }}</td>
+            <td>{{ item.归档只读 ? '是' : '否' }}</td>
+            <td>{{ item.重复证据?.重复对象 ?? '—' }}</td>
+          </tr>
+          <tr v-if="!dedupLanding.length">
+            <td colspan="10" class="empty-state">暂无可展示的去重落地清单，请先在重复去重页面确认报告并生成落地</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <div v-if="showCreate" class="modal-backdrop" data-testid="create-modal">
       <form class="modal" @submit.prevent="submitCreate">
         <h3>登记存储配置</h3>
@@ -85,6 +116,19 @@ import { computed, onMounted, ref } from 'vue'
 import { request } from '@/api/client'
 
 type Row = Record<string, string | number | null>
+type LandingRow = {
+  id: number
+  落地清单编号: string
+  报告编号: string
+  策略版本: string
+  记录编号: string
+  业务键: string
+  采集批次: string
+  判定结果: string
+  口径标记: string
+  归档只读: boolean
+  重复证据: { 重复对象: string } | null
+}
 
 const ENDPOINT = '/api/storage'
 const columns = ["配置编号", "存储类型", "连接信息", "分区策略", "压缩格式", "保存天数", "备份副本", "清理策略"]
@@ -100,6 +144,7 @@ const filterFields = columns.slice(0, 3)
 const showCreate = ref(false)
 const creating = ref(false)
 const createValues = ref<Record<string, string>>({})
+const dedupLanding = ref<LandingRow[]>([])
 const stats = computed(() => [
   { label: metricNames[0], value: total.value },
   { label: metricNames[1], value: rows.value.filter((row) => row.status === statuses[1]).length },
@@ -184,5 +229,21 @@ async function reload() {
   }
 }
 
-onMounted(reload)
+async function loadDedupLanding() {
+  try {
+    const response = await request(`${ENDPOINT}/dedup-landing?current_only=true`)
+    if (!response.ok) {
+      throw new Error('去重落地清单读取失败')
+    }
+    const payload = await response.json()
+    dedupLanding.value = (payload.items ?? []) as LandingRow[]
+  } catch {
+    dedupLanding.value = []
+  }
+}
+
+onMounted(() => {
+  void reload()
+  void loadDedupLanding()
+})
 </script>

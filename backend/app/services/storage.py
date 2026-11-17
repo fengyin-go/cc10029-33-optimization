@@ -1,8 +1,13 @@
-"""存储落地业务规则：状态流转、字段校验与筛选口径都收在这里。"""
+"""存储落地业务规则：状态流转、字段校验与筛选口径都收在这里。
+
+去重落地清单来自重复去重确认后的去重策略数据报告，本服务只做存储业务面的
+读取/回写转发，版本一致性等规则仍由 DedupVersionService 统一裁决。
+"""
 from __future__ import annotations
 
 from typing import Any
 
+from app.dedup_versioning import DedupVersionService
 from app.store import store
 
 MODULE = "storage"
@@ -14,6 +19,10 @@ NEGATIVE_ACTIONS = ["停用配置"]
 
 
 class StorageService:
+    def __init__(self) -> None:
+        # 去重落地清单的裁决逻辑复用重复去重领域服务，避免两个业务面各写一份规则。
+        self.dedup_versioning = DedupVersionService(store)
+
     def list_entries(
         self,
         *,

@@ -19,8 +19,10 @@ export default defineConfig({
     // 关掉自动打开页面：起服务时只打印地址，不拉起浏览器
     open: false,
     strictPort: false,
+    // 用段边界正则而非字符串 '/api'：前缀匹配会把 /apigate（以 /api 开头）
+    // 也代理到后端导致该 SPA 路由 404；^/api(/|$) 只匹配 /api 与 /api/... 。
     proxy: {
-      '/api': {
+      '^/api(/|$)': {
         target: proxyTarget,
         changeOrigin: true,
       },

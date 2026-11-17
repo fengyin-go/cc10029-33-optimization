@@ -7,7 +7,7 @@ import io
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from app.schemas import ActionPayload, ActionResult, EntryPayload, PageResult
+from app.schemas import ActionPayload, ActionResult, EntryPayload, LandingPayload, PageResult
 from app.services.storage import StorageService
 
 router = APIRouter(prefix="/api/storage", tags=["存储落地"])
@@ -63,6 +63,34 @@ def export_entries(
     return StreamingResponse(
         iter([output.getvalue()]), media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="storage.csv"'})
+
+
+@router.get("/dedup-landing")
+def list_dedup_landing(
+    report_code: str | None = Query(default=None),
+    storage_code: str | None = Query(default=None),
+    strategy_code: str | None = Query(default=None),
+    current_only: bool = Query(default=True),
+) -> dict:
+    """存储业务面读取去重落地清单：回写结果与去重面 /api/dedup/landing 同源。"""
+    rows = service.dedup_versioning.list_landing(
+        report_code=report_code, storage_code=storage_code,
+        strategy_code=strategy_code, current_only=current_only)
+    return {"items": rows, "total": len(rows), "page": 1, "size": len(rows) or 1}
+
+
+@router.post("/dedup-landing", response_model=ActionResult, status_code=201)
+def write_dedup_landing(payload: LandingPayload) -> ActionResult:
+    """存储落地读取去重策略数据报告并生成去重落地清单，回写本业务面存储。
+
+    落地版本必须与报告确认的策略版本一致，重复落地与并发第二份结果均被拒绝。
+    """
+    summary, message, code = service.dedup_versioning.write_landing(payload.model_dump())
+    if summary is None:
+        if code in (404, 409):
+            raise HTTPException(status_code=code, detail=message)
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=True, message=message, entry=summary)
 
 
 @router.get("/{entry_id}", response_model=dict)

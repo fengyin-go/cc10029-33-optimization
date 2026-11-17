@@ -75,5 +75,39 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 去重策略版本化与阈值重算
+
+重复去重在原 CRUD 之外提供「阈值调整 → 按新口径重算 → 数据报告 → 去重版本 → 存储落地」
+的完整链路，核心领域逻辑在 `backend/app/dedup_versioning.py`，原始采集批次样例在
+`backend/app/dedup_seed.py`（独立内部表，不计入运营概览的 18 个业务模块）。
+
+关键规则：
+
+- 阈值调整后按**新阈值 + 重新判定范围**对历史记录重新判定，已归档原始批次保持只读，
+  重算永远只生成新的去重版本（冻结版/最新版），不改写原始数据。
+- 去重策略数据报告记录**旧阈值、新阈值、阈值区间与重新判定范围**，并保留新旧两套保留记录、
+  重复证据与口径冲突明细；规则 = 判定口径（算法/业务键列）+ 阈值上限。
+- 未进入重算范围的记录不标记新口径，落地清单中保留 `未进入重算范围` 的原口径标记。
+- 同一业务键新旧口径保留记录不同即口径冲突，同一策略始终只有一个 `是否当前=true` 的版本。
+- 报告并发写入只允许一个提交成功（409 拒绝其余）；同一幂等键重复提交只生效一次，不产生第二条记录。
+- 存储落地读取**已确认**报告生成去重落地清单，落地版本必须与报告确认的策略版本一致，
+  第二份落地结果一律拒绝；结果同时在 `/api/dedup/landing` 与 `/api/storage/dedup-landing` 同源可见。
+- 新增接口均为 `/api/dedup` 下的增量路由，既有去重接口的字段名与 `{items,total,page,size}`、
+  `{ok,message,entry}` 返回结构保持不变。
+
+主要接口：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/dedup/recompute?strategy_code=` | 按新阈值/范围重算，生成数据报告与去重版本（201） |
+| GET | `/api/dedup/reports`、`/api/dedup/reports/{编号}` | 报告列表与详情（含新旧证据、冲突、范围外记录） |
+| POST | `/api/dedup/reports/{编号}/confirm` | 确认报告策略版本 |
+| GET | `/api/dedup/versions` | 去重版本（冻结版/最新版、当前标记） |
+| POST | `/api/dedup/versions/current?strategy_code=` | 在冻结版/最新版间切换当前版本 |
+| GET | `/api/dedup/trace-source` | 沿调用链定位报告数据来源 |
+| POST | `/api/dedup/landing`、`/api/storage/dedup-landing` | 生成/读取去重落地清单（201，重复拒绝 409） |
+
+后端领域规则测试：`cd backend && .venv/bin/python -m unittest tests.test_dedup_versioning`。
+
 领域：数据工程
 子方向：数据采集、爬虫与RPA

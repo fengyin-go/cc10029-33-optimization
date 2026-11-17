@@ -35,6 +35,35 @@ class ActionPayload(BaseModel):
     remark: str | None = None
 
 
+class RecomputePayload(BaseModel):
+    """阈值重算请求：新阈值、阈值区间与重新判定范围，旧阈值缺省取策略当前值。"""
+
+    新阈值: float
+    旧阈值: float | None = None
+    阈值下界: float | None = None
+    阈值上界: float | None = None
+    去重算法: str | None = None
+    业务键列: str | None = None
+    保留顺序: str | None = None
+    重新判定范围: str | None = None
+    范围批次: list[str] | None = None
+    幂等键: str | None = None
+
+
+class SetCurrentVersionPayload(BaseModel):
+    """在冻结版与最新版之间切换当前去重版本。"""
+
+    策略版本: str
+
+
+class LandingPayload(BaseModel):
+    """存储落地读取已确认报告生成去重落地清单，落地版本必须与报告版本一致。"""
+
+    报告编号: str
+    存储配置编号: str
+    策略版本: str | None = None
+
+
 
 class TargetsiteEntry(BaseModel):
     """目标站点明细结构。"""
